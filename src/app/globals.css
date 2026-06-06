@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 229, 229, 229;
+  --background-rgb: 15, 15, 15;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+}
+
+@layer base {
+  /* Focus styles for accessibility */
+  *:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  /* Skip link */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
+
+@layer components {
+  .agent-avatar {
+    @apply w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm;
+  }
+
+  .message-bubble {
+    @apply p-3 rounded-lg max-w-[80%];
+  }
+
+  .message-bubble.user {
+    @apply bg-atoms-accent text-white ml-auto;
+  }
+
+  .message-bubble.agent {
+    @apply bg-atoms-card border border-atoms-border;
+  }
+
+  .preview-frame {
+    @apply w-full h-full border-0;
+    min-height: 400px;
+  }
+
+  .step-indicator {
+    @apply flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all;
+  }
+
+  .step-indicator.active {
+    @apply bg-atoms-accent/20 text-atoms-accent border border-atoms-accent/50;
+  }
+
+  .step-indicator.completed {
+    @apply bg-atoms-success/20 text-atoms-success border border-atoms-success/50;
+  }
+
+  .step-indicator.pending {
+    @apply bg-atoms-card text-atoms-textMuted border border-atoms-border;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: #e5e5e5;
+}

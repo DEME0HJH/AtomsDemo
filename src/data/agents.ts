@@ -1,0 +1,60 @@
+import { Agent } from '@/types';
+
+export const agents: Agent[] = [
+  {
+    id: 'mike',
+    name: 'Mike',
+    role: '研究员',
+    description: '负责需求分析和用户研究',
+    color: 'bg-agent-mike',
+    avatar: 'M',
+  },
+  {
+    id: 'emma',
+    name: 'Emma',
+    role: '产品经理',
+    description: '负责产品设计和功能规划',
+    color: 'bg-agent-emma',
+    avatar: 'E',
+  },
+  {
+    id: 'bob',
+    name: 'Bob',
+    role: '架构师',
+    description: '负责技术架构设计',
+    color: 'bg-agent-bob',
+    avatar: 'B',
+  },
+  {
+    id: 'alex',
+    name: 'Alex',
+    role: '工程师',
+    description: '负责代码生成和实现',
+    color: 'bg-agent-alex',
+    avatar: 'A',
+  },
+  {
+    id: 'david',
+    name: 'David',
+    role: '安全专家',
+    description: '负责代码审查和安全检查',
+    color: 'bg-agent-david',
+    avatar: 'D',
+  },
+  {
+    id: 'iris',
+    name: 'Iris',
+    role: '测试员',
+    description: '负责测试用例设计和执行',
+    color: 'bg-agent-iris',
+    avatar: 'I',
+  },
+  {
+    id: 'sarah',
+    name: 'Sarah',
+    role: '设计师',
+    description: '负责 UI/UX 设计',
+    color: 'bg-agent-sarah',
+    avatar: 'S',
+  },
+];
