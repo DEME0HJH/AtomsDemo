@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { GeneratedApp, AppFile } from '@/types';
-import { X, Code, Eye, Download, MessageSquare, Bot, Pencil, Save, FolderTree } from 'lucide-react';
+import { X, Code, Eye, Download, MessageSquare, Bot, Pencil, Save, FolderTree, Rocket } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import CodeEditor from './CodeEditor';
+import DeployModal from './DeployModal';
 import { updateApp } from '@/lib/storage';
 
 interface AppPreviewProps {
@@ -18,6 +19,7 @@ export default function AppPreview({ app, onClose, onEdit }: AppPreviewProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'chat' | 'editor'>('preview');
   const [files, setFiles] = useState<AppFile[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const [showDeployModal, setShowDeployModal] = useState(false);
   const { showToast } = useToast();
 
   // Convert app code to file structure
@@ -240,6 +242,15 @@ ${app.code.js}
           >
             <Download size={16} aria-hidden="true" />
           </button>
+          <button
+            onClick={() => setShowDeployModal(true)}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
+            aria-label="部署应用"
+            title="部署应用"
+          >
+            <Rocket size={14} aria-hidden="true" />
+            部署
+          </button>
           {onEdit && (
             <button
               onClick={() => onEdit(app)}
@@ -344,6 +355,15 @@ ${app.code.js}
         <span>生成于 {new Date(app.createdAt).toLocaleString('zh-CN')}</span>
         <span>模式: {app.steps.length > 2 ? '团队模式' : '工程师模式'}</span>
       </div>
+
+      {/* Deploy Modal */}
+      {app && (
+        <DeployModal
+          app={app}
+          isOpen={showDeployModal}
+          onClose={() => setShowDeployModal(false)}
+        />
+      )}
     </div>
   );
 }

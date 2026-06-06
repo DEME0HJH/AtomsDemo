@@ -1,21 +1,24 @@
-import { UserSession, GeneratedApp, AppSettings } from '@/types';
+import { UserSession, GeneratedApp, AppSettings, DeployConfig } from '@/types';
 import { saveToIndexedDB, getFromIndexedDB, deleteFromIndexedDB, getAllFromIndexedDB } from './indexedDB';
 
 const STORAGE_KEY = 'atoms-demo';
 
 function getStorage(): UserSession {
   if (typeof window === 'undefined') {
-    return { apps: [], settings: { theme: 'dark' } };
+    return { apps: [], settings: { theme: 'dark' }, deploys: [] };
   }
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (data) {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      // Migrate old data without deploys
+      if (!parsed.deploys) parsed.deploys = [];
+      return parsed;
     }
   } catch {
     console.error('Failed to parse storage data');
   }
-  return { apps: [], settings: { theme: 'dark' } };
+  return { apps: [], settings: { theme: 'dark' }, deploys: [] };
 }
 
 function setStorage(session: UserSession): void {
@@ -87,6 +90,40 @@ export function getSettings(): AppSettings {
 export function updateSettings(settings: Partial<AppSettings>): void {
   const session = getStorage();
   session.settings = { ...session.settings, ...settings };
+  setStorage(session);
+}
+
+// Deploy functions
+export function getDeploys(appId?: string): DeployConfig[] {
+  const session = getStorage();
+  if (appId) {
+    return session.deploys.filter(d => d.appId === appId);
+  }
+  return session.deploys;
+}
+
+export function addDeploy(deploy: DeployConfig): void {
+  const session = getStorage();
+  session.deploys.unshift(deploy);
+  // Keep max 100 deploy records
+  if (session.deploys.length > 100) {
+    session.deploys = session.deploys.slice(0, 100);
+  }
+  setStorage(session);
+}
+
+export function updateDeploy(deployId: string, updates: Partial<DeployConfig>): void {
+  const session = getStorage();
+  const index = session.deploys.findIndex(d => d.id === deployId);
+  if (index !== -1) {
+    session.deploys[index] = { ...session.deploys[index], ...updates };
+    setStorage(session);
+  }
+}
+
+export function deleteDeploy(deployId: string): void {
+  const session = getStorage();
+  session.deploys = session.deploys.filter(d => d.id !== deployId);
   setStorage(session);
 }
 

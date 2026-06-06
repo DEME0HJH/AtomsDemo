@@ -67,7 +67,21 @@ export interface AppSettings {
   theme: 'dark' | 'light';
 }
 
+export type DeployTarget = 'cloud' | 'local';
+
+export interface DeployConfig {
+  id: string;
+  appId: string;
+  target: DeployTarget;
+  url?: string;
+  domain?: string;
+  status: 'pending' | 'deploying' | 'success' | 'failed';
+  createdAt: number;
+  message?: string;
+}
+
 export interface UserSession {
   apps: GeneratedApp[];
   settings: AppSettings;
+  deploys: DeployConfig[];
 }

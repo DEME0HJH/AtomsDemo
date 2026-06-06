@@ -5,6 +5,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Vercel specific: allow dynamic routes in static export
+  trailingSlash: true,
 };
 
 export default nextConfig;
