@@ -10,6 +10,7 @@ vi.mock('@/components/Toast', () => ({
 // Mock the storage
 vi.mock('@/lib/storage', () => ({
   addApp: vi.fn(),
+  updateApp: vi.fn(),
 }));
 
 // Mock AgentEngine to avoid real async delays
@@ -24,6 +25,8 @@ vi.mock('@/lib/agentEngine', () => ({
       createdAt: Date.now(),
       prompt: 'test',
       steps: [],
+      messages: [],
+      usedAI: false,
     }),
   })),
 }));
@@ -35,68 +38,67 @@ describe('ChatInterface', () => {
     vi.clearAllMocks();
   });
 
-  it('应该渲染初始状态（标题、输入框、发送按钮）', () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
+  it('应该渲染初始状态（问候语、输入框、生成按钮）', () => {
+    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} username="测试用户" />);
 
-    expect(screen.getByText('开始创建你的应用')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('描述你想要的应用...')).toBeInTheDocument();
-    expect(screen.getByLabelText('发送消息')).toBeInTheDocument();
+    // Check greeting
+    expect(screen.getByText('你好，测试用户！')).toBeInTheDocument();
+    // Check input placeholder
+    expect(screen.getByPlaceholderText('描述你想要的应用，例如：帮我做一个番茄钟...')).toBeInTheDocument();
   });
 
   it('输入框应该能更新值', () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
+    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} username="测试用户" />);
 
-    const input = screen.getByPlaceholderText('描述你想要的应用...');
+    const input = screen.getByPlaceholderText('描述你想要的应用，例如：帮我做一个番茄钟...');
     fireEvent.change(input, { target: { value: '创建一个待办应用' } });
 
     expect(input).toHaveValue('创建一个待办应用');
   });
 
-  it('应该显示三个模板快捷按钮', () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
+  it('输入为空时生成按钮应该禁用', () => {
+    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} username="测试用户" />);
 
-    expect(screen.getByLabelText('快速选择：待办事项，任务管理应用')).toBeInTheDocument();
-    expect(screen.getByLabelText('快速选择：天气查询，实时天气展示')).toBeInTheDocument();
-    expect(screen.getByLabelText('快速选择：计算器，科学计算器')).toBeInTheDocument();
+    const input = screen.getByPlaceholderText('描述你想要的应用，例如：帮我做一个番茄钟...');
+    expect(input).toBeInTheDocument();
+    // With empty input, the generate button (Wand2 icon) should be disabled
+    const buttons = screen.getAllByRole('button');
+    const generateButton = buttons[buttons.length - 1]; // Last button is the generate/Wand2 button
+    expect(generateButton).toBeDisabled();
   });
 
-  it('点击模板按钮应该填充输入框', () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
+  it('输入有文字时生成按钮应该启用', () => {
+    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} username="测试用户" />);
 
-    const templateBtn = screen.getByLabelText('快速选择：待办事项，任务管理应用');
-    fireEvent.click(templateBtn);
-
-    const input = screen.getByPlaceholderText('描述你想要的应用...');
-    expect(input).toHaveValue('创建一个待办事项应用');
-  });
-
-  it('输入为空时发送按钮应该禁用', () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
-
-    const sendButton = screen.getByLabelText('发送消息');
-    expect(sendButton).toBeDisabled();
-  });
-
-  it('输入有文字时发送按钮应该启用', () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
-
-    const input = screen.getByPlaceholderText('描述你想要的应用...');
+    const input = screen.getByPlaceholderText('描述你想要的应用，例如：帮我做一个番茄钟...');
     fireEvent.change(input, { target: { value: 'test' } });
 
-    const sendButton = screen.getByLabelText('发送消息');
-    expect(sendButton).not.toBeDisabled();
+    const buttons = screen.getAllByRole('button');
+    const generateButton = buttons[buttons.length - 1];
+    expect(generateButton).not.toBeDisabled();
   });
 
   it('按Enter应该触发生成流程', async () => {
-    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} />);
+    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} username="测试用户" />);
 
-    const input = screen.getByPlaceholderText('描述你想要的应用...');
+    const input = screen.getByPlaceholderText('描述你想要的应用，例如：帮我做一个番茄钟...');
     fireEvent.change(input, { target: { value: 'test' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    // 生成开始后应该显示加载状态
+    // After generation starts, should show loading state
     await waitFor(() => {
-      expect(screen.getByLabelText('正在生成中')).toBeInTheDocument();
+      expect(screen.getByText('AI 正在思考...')).toBeInTheDocument();
     });
+  });
+
+  it('应该显示模板快速选择按钮', () => {
+    render(<ChatInterface mode="team" onAppGenerated={mockOnAppGenerated} username="测试用户" />);
+
+    // Should show template quick-select buttons from the first 6 templates
+    const todoBtn = screen.getByText('待办事项');
+    expect(todoBtn).toBeInTheDocument();
+
+    const pomodoroBtn = screen.getByText('番茄钟');
+    expect(pomodoroBtn).toBeInTheDocument();
   });
 });

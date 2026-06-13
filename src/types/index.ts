@@ -24,9 +24,11 @@ export interface GenerationStep {
 
 export interface GenerationConfig {
   prompt: string;
-  templateType: 'todo' | 'weather' | 'calculator' | 'custom';
+  templateType: string;
   mode: AppMode;
   name?: string;
+  previousCode?: AppCode;
+  previousName?: string;
 }
 
 export interface AppFile {

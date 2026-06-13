@@ -6,6 +6,7 @@ const nextConfig = {
     unoptimized: true,
   },
   trailingSlash: true,
+  transpilePackages: ['@monaco-editor/react'],
 };
 
 export default nextConfig;

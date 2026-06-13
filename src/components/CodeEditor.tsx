@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { AppFile } from '@/types';
 import { FileCode, FileJson, FileType, Save, Plus, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import Editor, { OnMount } from '@monaco-editor/react';
 
 interface CodeEditorProps {
   files: AppFile[];
@@ -16,10 +17,11 @@ const languageMap: Record<string, string> = {
   'css': 'css',
   'js': 'javascript',
   'ts': 'typescript',
-  'jsx': 'jsx',
-  'tsx': 'tsx',
+  'jsx': 'javascript',
+  'tsx': 'typescript',
   'json': 'json',
   'md': 'markdown',
+  'markdown': 'markdown',
 };
 
 const getFileIcon = (filename: string) => {
@@ -42,9 +44,10 @@ export default function CodeEditor({ files, onChange, readOnly = false }: CodeEd
   const [newFileName, setNewFileName] = useState('');
   const { showToast } = useToast();
 
-  const handleContentChange = useCallback((content: string) => {
+  const handleContentChange = useCallback((value: string | undefined) => {
+    if (value === undefined) return;
     const updated = [...files];
-    updated[activeFile] = { ...updated[activeFile], content };
+    updated[activeFile] = { ...updated[activeFile], content: value };
     onChange(updated);
   }, [files, activeFile, onChange]);
 
@@ -84,6 +87,39 @@ export default function CodeEditor({ files, onChange, readOnly = false }: CodeEd
     showToast('代码已保存', 'success');
   };
 
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editor.updateOptions({
+      fontSize: 14,
+      lineNumbers: 'on',
+      minimap: { enabled: true },
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+      tabSize: 2,
+      automaticLayout: true,
+      renderWhitespace: 'selection',
+    });
+
+    // Register Ctrl+S shortcut
+    editor.addAction({
+      id: 'save-code',
+      label: '保存代码',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => handleSave(),
+    });
+
+    // Register format shortcut
+    editor.addAction({
+      id: 'format-code',
+      label: '格式化代码',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
+      run: () => {
+        editor.getAction('editor.action.formatDocument')?.run();
+      },
+    });
+
+    setTimeout(() => editor.focus(), 50);
+  };
+
   const currentFile = files[activeFile];
 
   if (!currentFile) {
@@ -116,7 +152,7 @@ export default function CodeEditor({ files, onChange, readOnly = false }: CodeEd
             <button
               onClick={handleSave}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs text-atoms-accent hover:bg-atoms-accent/10 transition-colors"
-              title="保存"
+              title="保存 (Ctrl+S)"
             >
               <Save size={14} />
               保存
@@ -158,7 +194,7 @@ export default function CodeEditor({ files, onChange, readOnly = false }: CodeEd
             <div
               key={file.path}
               onClick={() => setActiveFile(index)}
-              className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors group ${
                 index === activeFile
                   ? 'bg-atoms-accent/10 text-atoms-accent border-r-2 border-atoms-accent'
                   : 'text-atoms-textMuted hover:text-atoms-text hover:bg-atoms-border/50'
@@ -172,7 +208,7 @@ export default function CodeEditor({ files, onChange, readOnly = false }: CodeEd
                     e.stopPropagation();
                     handleDeleteFile(index);
                   }}
-                  className="opacity-0 group-hover:opacity-100 hover:text-atoms-error transition-opacity"
+                  className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
                   title="删除文件"
                 >
                   <Trash2 size={12} />
@@ -194,17 +230,33 @@ export default function CodeEditor({ files, onChange, readOnly = false }: CodeEd
             </span>
           </div>
 
-          {/* Text Area */}
+          {/* Monaco Editor */}
           <div className="flex-1 relative">
-            <textarea
+            <Editor
+              height="100%"
+              language={currentFile.language}
               value={currentFile.content}
-              onChange={e => handleContentChange(e.target.value)}
-              readOnly={readOnly}
-              spellCheck={false}
-              className="w-full h-full p-4 bg-atoms-dark text-atoms-text text-sm font-mono resize-none focus:outline-none"
-              style={{
-                lineHeight: '1.6',
+              onChange={handleContentChange}
+              onMount={handleEditorDidMount}
+              theme="vs-dark"
+              loading={
+                <div className="flex items-center justify-center h-full text-atoms-textMuted">
+                  <span>加载编辑器中...</span>
+                </div>
+              }
+              options={{
+                readOnly,
+                fontSize: 14,
+                fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
+                lineNumbers: 'on',
+                minimap: { enabled: true, scale: 1, showSlider: 'mouseover' },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
                 tabSize: 2,
+                automaticLayout: true,
+                renderWhitespace: 'selection',
+                bracketPairColorization: { enabled: true },
+                padding: { top: 8 },
               }}
             />
           </div>

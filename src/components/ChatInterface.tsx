@@ -7,6 +7,8 @@ import { addApp, updateApp } from '@/lib/storage';
 import { Send, Loader2, Sparkles, ChevronDown, Key, Bot, User, Wand2, ArrowLeft, Pencil } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import ApiKeyModal from '@/components/ApiKeyModal';
+import { allTemplates, matchTemplate } from '@/data/templates';
+import type { TemplateCategory } from '@/data/templates/types';
 
 interface ChatInterfaceProps {
   mode: AppMode;
@@ -16,11 +18,13 @@ interface ChatInterfaceProps {
   onCancelEdit?: () => void;
 }
 
-const templates = [
-  { id: 'todo', name: '待办事项', desc: '任务管理应用' },
-  { id: 'weather', name: '天气查询', desc: '实时天气展示' },
-  { id: 'calculator', name: '计算器', desc: '科学计算器' },
-];
+const categoryNames: Record<TemplateCategory, string> = {
+  productivity: '生产力',
+  tools: '实用工具',
+  creative: '创意应用',
+  data: '数据管理',
+  games: '小游戏',
+};
 
 export default function ChatInterface({ mode, onAppGenerated, username, editingApp, onCancelEdit }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
@@ -69,11 +73,8 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
   }, []);
 
   const detectTemplateType = (prompt: string): string => {
-    const p = prompt.toLowerCase();
-    if (p.includes('待办') || p.includes('任务') || p.includes('todo') || p.includes('清单')) return 'todo';
-    if (p.includes('天气') || p.includes('weather') || p.includes('温度')) return 'weather';
-    if (p.includes('计算') || p.includes('calculator') || p.includes('加减乘除')) return 'calculator';
-    return 'custom';
+    const result = matchTemplate(prompt);
+    return result.template.id;
   };
 
   const handleGenerate = async () => {
@@ -94,14 +95,14 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
       const detectedType = detectTemplateType(input.trim());
       const config: GenerationConfig = {
         prompt: input.trim(),
-        templateType: detectedType as 'todo' | 'weather' | 'calculator' | 'custom',
+        templateType: detectedType,
         mode,
       };
 
       // If editing existing app, pass previous code as context
       if (editingApp) {
-        (config as any).previousCode = editingApp.code;
-        (config as any).previousName = editingApp.name;
+        config.previousCode = editingApp.code;
+        config.previousName = editingApp.name;
       }
 
       const engine = new AgentEngine(
@@ -223,8 +224,8 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
               <br />
               <span className="text-xs opacity-75">例如："帮我做一个番茄钟应用"、"创建一个记账本"</span>
             </p>
-            <div className="flex gap-2 flex-wrap justify-center">
-              {templates.map(t => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full max-w-md">
+              {allTemplates.slice(0, 6).map(t => (
                 <button
                   key={t.id}
                   onClick={() => {
@@ -232,10 +233,11 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
                     setInput(`创建一个${t.name}应用`);
                     inputRef.current?.focus();
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-atoms-card border border-atoms-border text-sm text-atoms-textMuted hover:text-atoms-text hover:border-atoms-accent transition-colors focus:outline-none focus:ring-2 focus:ring-atoms-accent"
-                  aria-label={`快速选择：${t.name}，${t.desc}`}
+                  className="px-3 py-2 rounded-lg bg-atoms-card border border-atoms-border text-sm text-atoms-textMuted hover:text-atoms-text hover:border-atoms-accent transition-colors focus:outline-none focus:ring-2 focus:ring-atoms-accent text-left"
+                  aria-label={`快速选择：${t.name}，${t.description}`}
                 >
-                  {t.name}
+                  <div className="font-medium text-xs">{t.name}</div>
+                  <div className="text-xs opacity-60 truncate">{t.description}</div>
                 </button>
               ))}
             </div>
@@ -329,12 +331,12 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
               aria-haspopup="listbox"
               aria-label="选择应用模板"
             >
-              {templates.find(t => t.id === selectedTemplate)?.name || '自定义'}
+              {allTemplates.find(t => t.id === selectedTemplate)?.name || '自动匹配'}
               <ChevronDown size={14} aria-hidden="true" />
             </button>
             {showTemplates && (
               <div
-                className="absolute bottom-full left-0 mb-1 w-40 bg-atoms-card border border-atoms-border rounded-lg shadow-lg overflow-hidden z-10"
+                className="absolute bottom-full left-0 mb-1 w-56 bg-atoms-card border border-atoms-border rounded-lg shadow-lg overflow-hidden z-10 max-h-80 overflow-y-auto"
                 role="listbox"
                 aria-label="模板列表"
               >
@@ -352,28 +354,36 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
                       : 'text-atoms-text hover:bg-atoms-border'
                   }`}
                 >
-                  <div className="font-medium">自定义</div>
-                  <div className="text-xs text-atoms-textMuted">根据描述自动匹配</div>
+                  <div className="font-medium">✨ 自动匹配</div>
+                  <div className="text-xs text-atoms-textMuted">根据描述智能匹配模板</div>
                 </button>
-                {templates.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      setSelectedTemplate(t.id);
-                      setShowTemplates(false);
-                      inputRef.current?.focus();
-                    }}
-                    role="option"
-                    aria-selected={selectedTemplate === t.id}
-                    className={`w-full px-3 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-atoms-accent ${
-                      selectedTemplate === t.id
-                        ? 'bg-atoms-accent/20 text-atoms-accent'
-                        : 'text-atoms-text hover:bg-atoms-border'
-                    }`}
-                  >
-                    <div className="font-medium">{t.name}</div>
-                    <div className="text-xs text-atoms-textMuted">{t.desc}</div>
-                  </button>
+                <div className="border-t border-atoms-border" />
+                {(['productivity', 'tools', 'creative', 'data', 'games'] as TemplateCategory[]).map(category => (
+                  <div key={category}>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-atoms-textMuted bg-atoms-dark/50">
+                      {categoryNames[category]}
+                    </div>
+                    {allTemplates.filter(t => t.category === category).map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          setSelectedTemplate(t.id);
+                          setShowTemplates(false);
+                          inputRef.current?.focus();
+                        }}
+                        role="option"
+                        aria-selected={selectedTemplate === t.id}
+                        className={`w-full px-3 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-atoms-accent ${
+                          selectedTemplate === t.id
+                            ? 'bg-atoms-accent/20 text-atoms-accent'
+                            : 'text-atoms-text hover:bg-atoms-border'
+                        }`}
+                      >
+                        <div className="font-medium">{t.name}</div>
+                        <div className="text-xs text-atoms-textMuted">{t.description}</div>
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
             )}
