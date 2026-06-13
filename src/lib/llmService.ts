@@ -1,4 +1,5 @@
 import { AppCode } from '@/types';
+import { secureGetApiKey } from '@/lib/crypto';
 
 interface LLMGenerateResult {
   name: string;
@@ -14,11 +15,11 @@ interface AgentMessageContent {
 }
 
 /**
- * 从 localStorage 读取用户配置的 API Key
+ * 从加密存储读取 API Key
  */
-function getApiKey(): string | null {
+async function getApiKey(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('atoms-api-key');
+  return await secureGetApiKey();
 }
 
 /**
@@ -35,7 +36,7 @@ export async function generateAppCode(
     content: `正在分析需求：${prompt}`,
   });
 
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
 
   // 如果用户没有配置 API Key，给出明确提示
   if (!apiKey) {

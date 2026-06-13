@@ -280,6 +280,7 @@ ${app.code.js}
               ref={iframeRef}
               className="preview-frame"
               title={app.name}
+              sandbox="allow-scripts allow-same-origin"
               style={{ width: '100%', height: '100%', border: 'none' }}
               aria-label={`${app.name} 预览`}
             />

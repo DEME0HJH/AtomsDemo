@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Key, Eye, EyeOff, Check } from 'lucide-react';
+import { X, Key, Eye, EyeOff, Check, Shield } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import { secureSetApiKey, secureGetApiKey } from '@/lib/crypto';
 
 interface ApiKeyModalProps {
   isOpen: boolean;
@@ -12,28 +13,29 @@ interface ApiKeyModalProps {
 export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [provider, setProvider] = useState<'openai' | 'anthropic' | 'custom'>('openai');
+  const [provider, setProvider] = useState<'deepseek' | 'openai' | 'custom'>('deepseek');
   const { showToast } = useToast();
 
   useEffect(() => {
     // Load saved API key on open
     if (isOpen) {
-      const saved = localStorage.getItem('atoms-api-key');
-      const savedProvider = localStorage.getItem('atoms-api-provider') as 'openai' | 'anthropic' | 'custom';
-      if (saved) setApiKey(saved);
+      secureGetApiKey().then(key => {
+        if (key) setApiKey(key);
+      });
+      const savedProvider = localStorage.getItem('atoms-api-provider') as 'deepseek' | 'openai' | 'custom';
       if (savedProvider) setProvider(savedProvider);
     }
   }, [isOpen]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!apiKey.trim()) {
       showToast('请输入 API Key', 'warning');
       return;
     }
 
-    localStorage.setItem('atoms-api-key', apiKey.trim());
+    await secureSetApiKey(apiKey.trim());
     localStorage.setItem('atoms-api-provider', provider);
-    showToast('API Key 已保存', 'success');
+    showToast('API Key 已加密保存', 'success');
     onClose();
   };
 
@@ -75,7 +77,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
         <div className="mb-4">
           <label className="block text-sm text-atoms-textMuted mb-2">选择模型提供商</label>
           <div className="flex gap-2" role="radiogroup" aria-label="模型提供商">
-            {(['openai', 'anthropic', 'custom'] as const).map(p => (
+            {(['deepseek', 'openai', 'custom'] as const).map(p => (
               <button
                 key={p}
                 onClick={() => setProvider(p)}
@@ -87,7 +89,7 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
                     : 'bg-atoms-dark text-atoms-textMuted hover:text-atoms-text border border-atoms-border'
                 }`}
               >
-                {p === 'openai' ? 'OpenAI' : p === 'anthropic' ? 'Anthropic' : '自定义'}
+                {p === 'openai' ? 'OpenAI' : p === 'custom' ? '自定义' : 'DeepSeek'}
               </button>
             ))}
           </div>
@@ -115,8 +117,9 @@ export default function ApiKeyModal({ isOpen, onClose }: ApiKeyModalProps) {
               {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
             </button>
           </div>
-          <p className="text-xs text-atoms-textMuted mt-1">
-            API Key 仅存储在本地浏览器中，不会上传到任何服务器。
+          <p className="text-xs text-atoms-textMuted mt-1 flex items-center gap-1">
+            <Shield size={12} />
+            API Key 使用 AES-256-GCM 加密存储，仅保存在本设备中。
           </p>
         </div>
 

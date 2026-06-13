@@ -1,6 +1,7 @@
 import { AppMode, GenerationConfig, GenerationStep, GeneratedApp, AgentMessage, AppFile } from '@/types';
 import { matchTemplate } from '@/data/templates';
 import { runPipeline } from '@/lib/agents/pipeline';
+import { secureGetApiKey } from '@/lib/crypto';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -24,7 +25,7 @@ export class AgentEngine {
     this.messages = [];
 
     const apiKey = typeof window !== 'undefined'
-      ? localStorage.getItem('atoms-api-key') || ''
+      ? (await secureGetApiKey()) || ''
       : '';
 
     // If API Key is configured, use real multi-agent pipeline

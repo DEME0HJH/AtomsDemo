@@ -9,6 +9,7 @@ import { useToast } from '@/components/Toast';
 import ApiKeyModal from '@/components/ApiKeyModal';
 import { allTemplates, matchTemplate } from '@/data/templates';
 import type { TemplateCategory } from '@/data/templates/types';
+import { secureGetApiKey } from '@/lib/crypto';
 
 interface ChatInterfaceProps {
   mode: AppMode;
@@ -56,8 +57,7 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
   }, [editingApp]);
 
   useEffect(() => {
-    const key = localStorage.getItem('atoms-api-key');
-    setHasApiKey(!!key);
+    secureGetApiKey().then(key => setHasApiKey(!!key));
   }, []);
 
   const scrollToBottom = () => {
@@ -422,8 +422,7 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
 
       <ApiKeyModal isOpen={showApiKeyModal} onClose={() => {
         setShowApiKeyModal(false);
-        const key = localStorage.getItem('atoms-api-key');
-        setHasApiKey(!!key);
+        secureGetApiKey().then(key => setHasApiKey(!!key));
       }} />
     </div>
   );

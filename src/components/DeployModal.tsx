@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { DeployConfig, DeployTarget, GeneratedApp } from '@/types';
 import { addDeploy, updateDeploy } from '@/lib/storage';
-import { X, Globe, Server, ExternalLink, CheckCircle, AlertCircle, Loader2, Copy } from 'lucide-react';
+import { deployToVercel, checkDeploymentStatus } from '@/lib/deploy/vercel';
+import { X, Globe, Server, ExternalLink, CheckCircle, AlertCircle, Loader2, Copy, Download, Key } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 
 interface DeployModalProps {
@@ -14,63 +15,118 @@ interface DeployModalProps {
 
 export default function DeployModal({ app, isOpen, onClose }: DeployModalProps) {
   const [target, setTarget] = useState<DeployTarget>('cloud');
-  const [url, setUrl] = useState('');
-  const [domain, setDomain] = useState('');
+  const [vercelToken, setVercelToken] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployConfig | null>(null);
   const { showToast } = useToast();
 
   if (!isOpen) return null;
 
+  const buildFullHTML = (): string => {
+    const htmlFile = app.code.files?.find(f => f.path === 'index.html') || app.code.files?.[0];
+    const cssFile = app.code.files?.find(f => f.path.endsWith('.css'));
+    const jsFile = app.code.files?.find(f => f.path.endsWith('.js'));
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${app.name}</title>
+  ${cssFile ? `<style>\n${cssFile.content}\n  </style>` : `<style>\n${app.code.css}\n  </style>`}
+</head>
+<body>
+${htmlFile?.content || app.code.html}
+${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : `  <script>\n${app.code.js}\n  </script>`}
+</body>
+</html>`;
+  };
+
   const handleDeploy = async () => {
     setIsDeploying(true);
-    
+
     const deployId = `deploy_${Date.now()}`;
     const deploy: DeployConfig = {
       id: deployId,
       appId: app.id,
       target,
-      url: url || undefined,
-      domain: domain || undefined,
       status: 'deploying',
       createdAt: Date.now(),
     };
 
     addDeploy(deploy);
 
-    // Simulate deployment process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
     if (target === 'cloud') {
-      // Simulate cloud deployment
-      const success = Math.random() > 0.1; // 90% success rate for demo
-      if (success) {
-        const finalUrl = url || `https://atoms-demo.vercel.app/app/${app.id}`;
-        updateDeploy(deployId, { 
-          status: 'success', 
-          url: finalUrl,
-          message: '应用已成功部署到云端' 
+      // === Real Vercel deployment ===
+      try {
+        if (!vercelToken.trim()) {
+          throw new Error('请输入 Vercel Access Token');
+        }
+
+        const result = await deployToVercel(buildFullHTML(), app.name, vercelToken.trim());
+
+        // Poll for readiness (max 15s)
+        if (!result.ready && result.deploymentId) {
+          let attempts = 0;
+          while (attempts < 10) {
+            await new Promise(r => setTimeout(r, 1500));
+            const status = await checkDeploymentStatus(result.deploymentId, vercelToken.trim());
+            if (status.ready) {
+              result.url = status.url;
+              result.ready = true;
+              break;
+            }
+            attempts++;
+          }
+        }
+
+        updateDeploy(deployId, {
+          status: 'success',
+          url: result.url,
+          message: result.ready
+            ? '应用已成功部署到 Vercel'
+            : '部署已提交，可能需要几秒生效',
         });
-        setDeployResult({ ...deploy, status: 'success', url: finalUrl, message: '应用已成功部署到云端' });
+        setDeployResult({
+          ...deploy,
+          status: 'success',
+          url: result.url,
+          message: '成功部署到 Vercel',
+        });
         showToast('部署成功！', 'success');
-      } else {
-        updateDeploy(deployId, { 
-          status: 'failed', 
-          message: '云端部署失败，请检查配置' 
-        });
-        setDeployResult({ ...deploy, status: 'failed', message: '云端部署失败，请检查配置' });
-        showToast('部署失败', 'error');
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : '部署失败';
+        updateDeploy(deployId, { status: 'failed', message: errMsg });
+        setDeployResult({ ...deploy, status: 'failed', message: errMsg });
+        showToast(errMsg, 'error');
       }
     } else {
-      // Local deployment - always success
-      const localUrl = url || `http://localhost:3000/preview/${app.id}`;
-      updateDeploy(deployId, { 
-        status: 'success', 
-        url: localUrl,
-        message: '本地部署配置已保存' 
-      });
-      setDeployResult({ ...deploy, status: 'success', url: localUrl, message: '本地部署配置已保存' });
-      showToast('本地部署配置已保存', 'success');
+      // Local deployment — download HTML file
+      try {
+        const blob = new Blob([buildFullHTML()], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${app.name.replace(/\s+/g, '_')}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        updateDeploy(deployId, {
+          status: 'success',
+          message: 'HTML 文件已下载',
+          url: '本地文件',
+        });
+        setDeployResult({
+          ...deploy,
+          status: 'success',
+          message: '部署包已下载到本地',
+          url: '本地文件',
+        });
+        showToast('部署包已下载', 'success');
+      } catch {
+        updateDeploy(deployId, { status: 'failed', message: '下载失败' });
+        setDeployResult({ ...deploy, status: 'failed', message: '下载失败' });
+        showToast('下载失败', 'error');
+      }
     }
 
     setIsDeploying(false);
@@ -84,25 +140,8 @@ export default function DeployModal({ app, isOpen, onClose }: DeployModalProps) 
   };
 
   const handleDownloadPackage = () => {
-    const htmlFile = app.code.files?.find(f => f.path === 'index.html') || app.code.files?.[0];
-    const cssFile = app.code.files?.find(f => f.path.endsWith('.css'));
-    const jsFile = app.code.files?.find(f => f.path.endsWith('.js'));
-
-    const fullCode = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${app.name}</title>
-  ${cssFile ? `<style>\n${cssFile.content}\n  </style>` : ''}
-</head>
-<body>
-${htmlFile?.content || ''}
-${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
-</body>
-</html>`;
-
-    const blob = new Blob([fullCode], { type: 'text/html' });
+    const html = buildFullHTML();
+    const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -131,9 +170,9 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Deploy Target Selection */}
           {!deployResult && (
             <>
+              {/* Deploy Target Selection */}
               <div>
                 <label className="block text-sm font-medium text-atoms-text mb-3">选择部署方式</label>
                 <div className="grid grid-cols-2 gap-3">
@@ -146,10 +185,8 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
                     }`}
                   >
                     <Globe size={24} className={target === 'cloud' ? 'text-atoms-accent' : 'text-atoms-textMuted'} />
-                    <span className={`text-sm font-medium ${target === 'cloud' ? 'text-atoms-accent' : 'text-atoms-text'}`}>
-                      云端部署
-                    </span>
-                    <span className="text-xs text-atoms-textMuted">部署到 Vercel/Netlify 等平台</span>
+                    <span className="text-sm font-medium">云端部署</span>
+                    <span className="text-xs text-atoms-textMuted text-center">通过 Vercel API 部署到公网</span>
                   </button>
                   <button
                     onClick={() => setTarget('local')}
@@ -160,65 +197,49 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
                     }`}
                   >
                     <Server size={24} className={target === 'local' ? 'text-atoms-accent' : 'text-atoms-textMuted'} />
-                    <span className={`text-sm font-medium ${target === 'local' ? 'text-atoms-accent' : 'text-atoms-text'}`}>
-                      本地部署
-                    </span>
-                    <span className="text-xs text-atoms-textMuted">本地服务器或静态托管</span>
+                    <span className="text-sm font-medium">本地下载</span>
+                    <span className="text-xs text-atoms-textMuted text-center">下载 HTML 文件自行托管</span>
                   </button>
                 </div>
               </div>
 
-              {/* URL Input */}
-              <div>
-                <label className="block text-sm font-medium text-atoms-text mb-2">
-                  部署地址 {target === 'cloud' ? '(可选)' : '(可选)'}
-                </label>
-                <input
-                  type="url"
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  placeholder={target === 'cloud' ? 'https://your-app.vercel.app' : 'http://localhost:3000'}
-                  className="w-full px-4 py-2.5 rounded-lg bg-atoms-dark border border-atoms-border text-atoms-text placeholder-atoms-textMuted text-sm focus:outline-none focus:ring-2 focus:ring-atoms-accent"
-                />
-                <p className="text-xs text-atoms-textMuted mt-1">
-                  {target === 'cloud' 
-                    ? '输入你的云端部署地址，留空将使用默认地址' 
-                    : '输入本地服务器地址，留空将使用默认地址'}
-                </p>
-              </div>
-
-              {/* Domain Input */}
-              <div>
-                <label className="block text-sm font-medium text-atoms-text mb-2">
-                  自定义域名 (可选)
-                </label>
-                <input
-                  type="text"
-                  value={domain}
-                  onChange={e => setDomain(e.target.value)}
-                  placeholder="example.com"
-                  className="w-full px-4 py-2.5 rounded-lg bg-atoms-dark border border-atoms-border text-atoms-text placeholder-atoms-textMuted text-sm focus:outline-none focus:ring-2 focus:ring-atoms-accent"
-                />
-                <p className="text-xs text-atoms-textMuted mt-1">
-                  如果你有自定义域名，可以在这里配置
-                </p>
-              </div>
+              {/* Vercel Token (cloud mode) */}
+              {target === 'cloud' && (
+                <div>
+                  <label className="block text-sm font-medium text-atoms-text mb-2">
+                    Vercel Access Token
+                  </label>
+                  <div className="relative">
+                    <Key size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-atoms-textMuted" />
+                    <input
+                      type="password"
+                      value={vercelToken}
+                      onChange={e => setVercelToken(e.target.value)}
+                      placeholder="在 vercel.com/account/tokens 获取"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-atoms-dark border border-atoms-border text-atoms-text text-sm focus:outline-none focus:ring-2 focus:ring-atoms-accent"
+                    />
+                  </div>
+                  <p className="text-xs text-atoms-textMuted mt-1">
+                    在 <a href="https://vercel.com/account/tokens" target="_blank" rel="noopener noreferrer" className="text-atoms-accent hover:underline">vercel.com/account/tokens</a> 创建 Token
+                  </p>
+                </div>
+              )}
 
               {/* Deploy Button */}
               <button
                 onClick={handleDeploy}
-                disabled={isDeploying}
+                disabled={isDeploying || (target === 'cloud' && !vercelToken.trim())}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-atoms-accent hover:bg-atoms-accentHover disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 {isDeploying ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    部署中...
+                    部署中...（可能需要几秒）
                   </>
                 ) : (
                   <>
                     <ExternalLink size={16} />
-                    {target === 'cloud' ? '部署到云端' : '配置本地部署'}
+                    {target === 'cloud' ? '部署到 Vercel' : '下载 HTML 文件'}
                   </>
                 )}
               </button>
@@ -246,7 +267,7 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
                 </div>
               </div>
 
-              {deployResult.url && (
+              {deployResult.url && deployResult.url !== '本地文件' && (
                 <div>
                   <label className="block text-sm font-medium text-atoms-text mb-2">访问地址</label>
                   <div className="flex gap-2">
@@ -267,27 +288,15 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
                 </div>
               )}
 
-              {deployResult.domain && (
-                <div>
-                  <label className="block text-sm font-medium text-atoms-text mb-2">自定义域名</label>
-                  <input
-                    type="text"
-                    value={deployResult.domain}
-                    readOnly
-                    className="w-full px-4 py-2.5 rounded-lg bg-atoms-dark border border-atoms-border text-atoms-text text-sm"
-                  />
-                </div>
-              )}
-
               <div className="flex gap-3">
                 <button
                   onClick={handleDownloadPackage}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-atoms-card border border-atoms-border hover:border-atoms-accent text-atoms-text rounded-lg text-sm font-medium transition-colors"
                 >
-                  <Server size={16} />
+                  <Download size={16} />
                   下载部署包
                 </button>
-                {deployResult.url && (
+                {deployResult.url && deployResult.url !== '本地文件' && (
                   <a
                     href={deployResult.url}
                     target="_blank"
@@ -303,8 +312,6 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
               <button
                 onClick={() => {
                   setDeployResult(null);
-                  setUrl('');
-                  setDomain('');
                 }}
                 className="w-full px-4 py-2 text-sm text-atoms-textMuted hover:text-atoms-text transition-colors"
               >
