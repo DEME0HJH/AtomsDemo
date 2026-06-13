@@ -16,7 +16,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const { signIn, signUp, signInWithGitHub, user, signOut } = useAuth();
+  const { signIn, signUp, signInWithGitHub, user, signOut, configured } = useAuth();
   const { showToast } = useToast();
 
   if (!isOpen) return null;
@@ -152,21 +152,24 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 </button>
               </form>
 
-              {/* Divider */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-atoms-border" />
-                <span className="text-xs text-atoms-textMuted">或</span>
-                <div className="flex-1 h-px bg-atoms-border" />
-              </div>
+              {/* Divider + GitHub OAuth — only when Supabase is configured */}
+              {configured && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-atoms-border" />
+                    <span className="text-xs text-atoms-textMuted">或</span>
+                    <div className="flex-1 h-px bg-atoms-border" />
+                  </div>
 
-              {/* GitHub OAuth */}
-              <button
-                onClick={handleGitHubLogin}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-atoms-dark border border-atoms-border hover:border-atoms-accent text-atoms-text rounded-lg text-sm font-medium transition-colors"
-              >
-                <Github size={18} />
-                使用 GitHub 登录
-              </button>
+                  <button
+                    onClick={handleGitHubLogin}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-atoms-dark border border-atoms-border hover:border-atoms-accent text-atoms-text rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <Github size={18} />
+                    使用 GitHub 登录
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>

@@ -1,5 +1,6 @@
 import { getProjectBySlug } from '@/lib/supabase/storage-server';
 import { notFound } from 'next/navigation';
+import { isSupabaseConfigured } from '@/lib/supabase/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,49 @@ export default async function SharePage({
 }: {
   params: { slug: string };
 }) {
+  // If Supabase not configured, show a friendly page
+  if (!isSupabaseConfigured()) {
+    return (
+      <html lang="zh-CN">
+        <head>
+          <meta charSet="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Atoms — 分享功能</title>
+        </head>
+        <body style={{
+          margin: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          background: '#0f172a',
+          color: '#e2e8f0',
+          fontFamily: '-apple-system, sans-serif',
+        }}>
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <h1 style={{ fontSize: 28, marginBottom: 12 }}>⚡ Atoms AI</h1>
+            <p style={{ fontSize: 16, color: '#94a3b8', marginBottom: 20 }}>
+              分享功能需要配置 Supabase 才能使用。
+            </p>
+            <a href="/"
+              style={{
+                display: 'inline-block',
+                padding: '10px 24px',
+                background: '#3b82f6',
+                color: 'white',
+                borderRadius: 10,
+                textDecoration: 'none',
+                fontWeight: 600,
+              }}
+            >
+              返回首页
+            </a>
+          </div>
+        </body>
+      </html>
+    );
+  }
+
   let app;
   try {
     app = await getProjectBySlug(params.slug);
