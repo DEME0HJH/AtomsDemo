@@ -10,10 +10,8 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   configured: boolean;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string) => Promise<{ error?: string }>;
-  signOut: () => Promise<void>;
-  signInWithGitHub: () => Promise<void>;
+  isAnonymous: boolean;
+  linkEmail: (email: string) => Promise<{ error?: string }>;
 }
 
 const noopAuth: AuthContextType = {
@@ -21,21 +19,16 @@ const noopAuth: AuthContextType = {
   session: null,
   loading: false,
   configured: false,
-  signIn: async () => ({ error: 'Supabase 未配置，请设置环境变量 NEXT_PUBLIC_SUPABASE_URL' }),
-  signUp: async () => ({ error: 'Supabase 未配置' }),
-  signOut: async () => {},
-  signInWithGitHub: async () => {},
+  isAnonymous: false,
+  linkEmail: async () => ({ error: 'Supabase 未配置' }),
 };
 
 const AuthContext = createContext<AuthContextType>(noopAuth);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Skip entire Supabase initialization if not configured
   if (!isSupabaseConfigured()) {
     return <AuthContext.Provider value={noopAuth}>{children}</AuthContext.Provider>;
   }
-
-  // Supabase is configured — normal flow
   return <AuthProviderInner>{children}</AuthProviderInner>;
 }
 
@@ -43,51 +36,67 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let cancelled = false;
+
+    async function initAuth() {
+      // Check existing session
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+
+      if (existingSession) {
+        if (!cancelled) {
+          setSession(existingSession);
+          setUser(existingSession.user);
+          setIsAnonymous(existingSession.user?.is_anonymous ?? false);
+          setLoading(false);
+        }
+      } else {
+        // No session → auto sign in anonymously
+        const { data, error } = await supabase.auth.signInAnonymously({
+          options: { captchaToken: undefined },
+        });
+
+        if (!cancelled) {
+          if (error) {
+            console.warn('[Auth] Anonymous sign-in failed:', error.message);
+          } else if (data.session) {
+            setSession(data.session);
+            setUser(data.session.user);
+            setIsAnonymous(true);
+          }
+          setLoading(false);
+        }
+      }
+    }
+
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      if (!cancelled) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsAnonymous(session?.user?.is_anonymous ?? false);
+        setLoading(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [supabase]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const linkEmail = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.updateUser({ email });
     if (error) return { error: error.message };
     return {};
-  }, [supabase]);
-
-  const signUp = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) return { error: error.message };
-    return {};
-  }, [supabase]);
-
-  const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-  }, [supabase]);
-
-  const signInWithGitHub = useCallback(async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
   }, [supabase]);
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, configured: true, signIn, signUp, signOut, signInWithGitHub }}>
+    <AuthContext.Provider value={{ user, session, loading, configured: true, isAnonymous, linkEmail }}>
       {children}
     </AuthContext.Provider>
   );

@@ -37,10 +37,11 @@ interface PipelineOptions {
   skipAgents?: string[];
   onMessage: (msg: AgentMessage) => void;
   onStep: (step: GenerationStep) => void;
+  onAgentChunk?: (agent: string, chunk: string) => void;
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<GeneratedApp> {
-  const { workflow, prompt, templateType, apiKey, skipAgents = [], onMessage, onStep } = options;
+  const { workflow, prompt, templateType, apiKey, skipAgents = [], onMessage, onStep, onAgentChunk } = options;
 
   const agentIds = workflowAgents[workflow].filter(id => !skipAgents.includes(id));
   const appId = `app_${Date.now()}`;
@@ -84,7 +85,10 @@ export async function runPipeline(options: PipelineOptions): Promise<GeneratedAp
     addMessage(agent.name, `🔍 ${agent.role}：开始工作...`);
 
     try {
-      const output = await agent.run(ctx);
+      const output = await agent.run(ctx, onAgentChunk
+        ? (chunk) => onAgentChunk(agent.name, chunk)
+        : undefined
+      );
 
       // --- Generate document from agent output ---
       const docFile = generateAgentDoc(agentId, output, prompt);

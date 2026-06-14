@@ -5,16 +5,14 @@ const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, messages, templateType, apiKey, temperature, maxTokens } = body;
+    const { prompt, messages, templateType, apiKey, temperature, maxTokens, stream } = body;
 
     // Compatible with both call modes
     let chatMessages: Array<{ role: string; content: string }>;
 
     if (messages) {
-      // New mode: direct messages passed (Agent calls)
       chatMessages = messages;
     } else if (prompt) {
-      // Legacy mode: construct messages from prompt (code generation)
       const systemPrompt = `你是一个专业的前端开发工程师。请根据用户需求生成一个完整的单页面应用。
 
 要求：
@@ -52,6 +50,101 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = process.env.DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_BASE_URL;
 
+    // ── Streaming mode: proxy SSE from DeepSeek ──
+    if (stream) {
+      const deepseekResponse = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: chatMessages,
+          max_tokens: maxTokens || 4096,
+          temperature: temperature ?? 0.7,
+          stream: true,
+        }),
+      });
+
+      if (!deepseekResponse.ok) {
+        const errText = await deepseekResponse.text();
+        console.error('LLM stream error:', deepseekResponse.status, errText);
+        return NextResponse.json(
+          { error: `API 流调用失败 (${deepseekResponse.status})` },
+          { status: 500 }
+        );
+      }
+
+      if (!deepseekResponse.body) {
+        return NextResponse.json({ error: 'No response body' }, { status: 500 });
+      }
+
+      const reader = deepseekResponse.body.getReader();
+      const decoder = new TextDecoder();
+
+      const sseStream = new ReadableStream({
+        async start(controller) {
+          let buffer = '';
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                if (trimmed.includes('[DONE]')) {
+                  controller.enqueue(new TextEncoder().encode('{"done":true}\n'));
+                  controller.close();
+                  return;
+                }
+                try {
+                  const json = JSON.parse(trimmed.slice(6));
+                  const content = json.choices?.[0]?.delta?.content || '';
+                  if (content) {
+                    controller.enqueue(
+                      new TextEncoder().encode(JSON.stringify({ chunk: content }) + '\n')
+                    );
+                  }
+                } catch { /* skip malformed chunks */ }
+              }
+            }
+            // Drain remaining buffer
+            if (buffer.trim() && buffer.trim().startsWith('data: ') && !buffer.includes('[DONE]')) {
+              try {
+                const json = JSON.parse(buffer.trim().slice(6));
+                const content = json.choices?.[0]?.delta?.content || '';
+                if (content) {
+                  controller.enqueue(
+                    new TextEncoder().encode(JSON.stringify({ chunk: content }) + '\n')
+                  );
+                }
+              } catch { /* ignore */ }
+            }
+            controller.enqueue(new TextEncoder().encode('{"done":true}\n'));
+          } catch (err) {
+            console.error('Stream read error:', err);
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(sseStream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // ── Non-streaming mode (legacy) ──
     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {

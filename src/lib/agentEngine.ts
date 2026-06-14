@@ -9,16 +9,19 @@ export class AgentEngine {
   private mode: AppMode;
   private onMessage: (message: AgentMessage) => void;
   private onStep: (step: GenerationStep) => void;
+  private onAgentChunk?: (agent: string, chunk: string) => void;
   private messages: AgentMessage[] = [];
 
   constructor(
     mode: AppMode,
     onMessage: (message: AgentMessage) => void,
-    onStep: (step: GenerationStep) => void
+    onStep: (step: GenerationStep) => void,
+    onAgentChunk?: (agent: string, chunk: string) => void
   ) {
     this.mode = mode;
     this.onMessage = onMessage;
     this.onStep = onStep;
+    this.onAgentChunk = onAgentChunk;
   }
 
   async generate(config: GenerationConfig): Promise<GeneratedApp> {
@@ -41,6 +44,7 @@ export class AgentEngine {
         apiKey,
         onMessage: this.onMessage,
         onStep: this.onStep,
+        onAgentChunk: this.onAgentChunk,
       });
     }
 

@@ -34,21 +34,43 @@ export function getApps(): GeneratedApp[] {
   return getStorage().apps;
 }
 
+// ── Cloud sync helpers (lazy import to avoid circular deps) ──
+let _cloudSyncEnabled: boolean | undefined;
+async function cloudSyncAdd(app: GeneratedApp): Promise<void> {
+  try {
+    if (_cloudSyncEnabled === undefined) {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      _cloudSyncEnabled = !!(url && !url.includes('your-project') && !url.includes('xxxx'));
+    }
+    if (!_cloudSyncEnabled) return;
+    const { saveProjectToCloud } = await import('./supabase/storage');
+    await saveProjectToCloud(app);
+  } catch { /* silent — cloud sync is best-effort */ }
+}
+
+async function cloudSyncDelete(appId: string): Promise<void> {
+  try {
+    if (!_cloudSyncEnabled) return;
+    const { deleteProjectFromCloud } = await import('./supabase/storage');
+    await deleteProjectFromCloud(appId);
+  } catch { /* silent */ }
+}
+
+// ── Local storage CRUD ──
+
 export async function addApp(app: GeneratedApp): Promise<void> {
   const session = getStorage();
   session.apps.unshift(app);
-  // Keep max 50 apps
   if (session.apps.length > 50) {
     session.apps = session.apps.slice(0, 50);
   }
   setStorage(session);
 
-  // Also save to IndexedDB for backup
-  try {
-    await saveToIndexedDB(app);
-  } catch {
-    console.warn('Failed to save app to IndexedDB');
-  }
+  // IndexedDB backup
+  try { await saveToIndexedDB(app); } catch { console.warn('Failed to save app to IndexedDB'); }
+
+  // Cloud sync (fire-and-forget)
+  cloudSyncAdd(app);
 }
 
 export async function updateApp(updatedApp: GeneratedApp): Promise<void> {
@@ -56,17 +78,13 @@ export async function updateApp(updatedApp: GeneratedApp): Promise<void> {
   const index = session.apps.findIndex(app => app.id === updatedApp.id);
   if (index !== -1) {
     session.apps[index] = updatedApp;
-    // Move to top
     session.apps.splice(index, 1);
     session.apps.unshift(updatedApp);
     setStorage(session);
 
-    // Also update in IndexedDB
-    try {
-      await saveToIndexedDB(updatedApp);
-    } catch {
-      console.warn('Failed to update app in IndexedDB');
-    }
+    try { await saveToIndexedDB(updatedApp); } catch { console.warn('Failed to update app in IndexedDB'); }
+
+    cloudSyncAdd(updatedApp);
   }
 }
 
@@ -75,12 +93,9 @@ export async function deleteApp(appId: string): Promise<void> {
   session.apps = session.apps.filter(app => app.id !== appId);
   setStorage(session);
 
-  // Also delete from IndexedDB
-  try {
-    await deleteFromIndexedDB(appId);
-  } catch {
-    console.warn('Failed to delete app from IndexedDB');
-  }
+  try { await deleteFromIndexedDB(appId); } catch { console.warn('Failed to delete app from IndexedDB'); }
+
+  cloudSyncDelete(appId);
 }
 
 export function getSettings(): AppSettings {

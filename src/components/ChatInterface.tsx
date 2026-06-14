@@ -114,7 +114,42 @@ export default function ChatInterface({ mode, onAppGenerated, username, editingA
             return prev.map(s => s.id === step.id ? step : s);
           }
           return [...prev, step];
-        })
+        }),
+        // ── Streaming handler ──
+        (agent, chunk) => {
+          setMessages(prev => {
+            // Find last message from this agent
+            const lastIdx = prev.length - 1;
+            if (lastIdx >= 0 && prev[lastIdx].agent === agent) {
+              const last = prev[lastIdx];
+              // If last message looks like a streaming intro ("🔍..."), replace with live content
+              if (last.content.startsWith('💬 ')) {
+                // Append chunk to existing streaming message
+                const updated = [...prev];
+                updated[lastIdx] = {
+                  ...last,
+                  content: last.content + chunk,
+                };
+                return updated;
+              }
+              if (last.content.startsWith('🔍 ') || last.content.startsWith('⚡ ')) {
+                // This is the "开始工作" message — replace with streaming
+                const updated = [...prev];
+                updated[lastIdx] = {
+                  ...last,
+                  content: `💬 ${agent} 思考中：${chunk}`,
+                };
+                return updated;
+              }
+            }
+            // Create new streaming message
+            return [...prev, {
+              agent,
+              content: `💬 ${agent} 思考中：${chunk}`,
+              timestamp: Date.now(),
+            }];
+          });
+        }
       );
 
       const app = await engine.generate(config);

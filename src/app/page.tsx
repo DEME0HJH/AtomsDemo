@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { AppMode, GeneratedApp } from '@/types';
 import { getApps } from '@/lib/storage';
+import { syncFromCloud } from '@/lib/sync';
 import { Atom, BookOpen, User } from 'lucide-react';
 import AgentTeam from '@/components/AgentTeam';
 import ChatInterface from '@/components/ChatInterface';
@@ -23,12 +24,21 @@ export default function Home() {
   useEffect(() => {
     const savedUsername = localStorage.getItem('atoms-username');
     const hasSeenOnboarding = localStorage.getItem('atoms-onboarding-complete');
-    
+
     if (!savedUsername || !hasSeenOnboarding) {
       setShowOnboarding(true);
     } else {
       setUsername(savedUsername);
     }
+
+    // Auto-pull cloud data on startup (anonymous or logged-in)
+    syncFromCloud().then(({ downloaded }) => {
+      if (downloaded > 0) {
+        setRefreshHistory(prev => prev + 1);
+        window.dispatchEvent(new CustomEvent('atoms:historyUpdated'));
+      }
+      console.log(`[Cloud Sync] Downloaded ${downloaded} apps from cloud`);
+    }).catch(() => {});
   }, []);
 
   const handleOnboardingComplete = (name: string) => {

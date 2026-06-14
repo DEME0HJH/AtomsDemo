@@ -45,9 +45,10 @@ export abstract class BaseAgent<TOutput> {
   protected async callLLM(
     messages: ChatMessage[],
     apiKey: string,
-    _onChunk?: (text: string) => void
+    onChunk?: (text: string) => void
   ): Promise<string> {
     let lastError: Error | null = null;
+    const useStreaming = !!onChunk;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -62,7 +63,7 @@ export abstract class BaseAgent<TOutput> {
             apiKey,
             temperature: this.meta.temperature,
             maxTokens: this.meta.maxTokens,
-            stream: false,
+            stream: useStreaming,
           }),
           signal: controller.signal,
         });
@@ -73,14 +74,38 @@ export abstract class BaseAgent<TOutput> {
           throw new Error(`API returned status ${response.status}`);
         }
 
+        // ── Streaming: read NDJSON chunks ──
+        if (useStreaming && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let fullContent = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split('\n').filter(Boolean);
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line);
+                if (data.done) return fullContent;
+                if (data.chunk) {
+                  fullContent += data.chunk;
+                  onChunk(data.chunk);
+                }
+              } catch { /* skip malformed */ }
+            }
+          }
+          // Got end of stream without explicit done marker
+          return fullContent;
+        }
+
+        // ── Non-streaming ──
         const data = await response.json();
         const content = data.content || '';
-
-        // Check if response was truncated
         if (data.finishReason === 'length' || data.finish_reason === 'length') {
           console.warn(`[${this.meta.id}] LLM response may be truncated (finish_reason=length)`);
         }
-
         return content;
 
       } catch (error) {
