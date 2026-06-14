@@ -60,7 +60,7 @@ describe('AppPreview', () => {
   it('should render download button', () => {
     render(<AppPreview app={mockApp} onClose={mockOnClose} />);
 
-    expect(screen.getByLabelText('下载 HTML 文件')).toBeInTheDocument();
+    expect(screen.getByLabelText('下载 ZIP 文件')).toBeInTheDocument();
   });
 
   it('should show mode info in footer', () => {

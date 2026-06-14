@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { DeployConfig, DeployTarget, GeneratedApp } from '@/types';
 import { addDeploy, updateDeploy } from '@/lib/storage';
 import { deployToVercel, checkDeploymentStatus } from '@/lib/deploy/vercel';
-import { X, Globe, Server, ExternalLink, CheckCircle, AlertCircle, Loader2, Copy, Download, Key } from 'lucide-react';
+import { X, Globe, Server, ExternalLink, CheckCircle, AlertCircle, Loader2, Copy, Download, Key, FileArchive } from 'lucide-react';
+import JSZip from 'jszip';
 import { useToast } from '@/components/Toast';
 
 interface DeployModalProps {
@@ -101,18 +102,52 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : `  <script>\n${app.cod
         showToast(errMsg, 'error');
       }
     } else {
-      // Local deployment — download HTML file
+      // Local deployment — download ZIP with all files
       try {
-        const blob = new Blob([buildFullHTML()], { type: 'text/html' });
+        const zip = new JSZip();
+        const safeName = app.name.replace(/[\s/\\]+/g, '_');
+
+        const htmlFile = app.code.files?.find(f => f.path === 'index.html') || app.code.files?.[0];
+        const cssFile = app.code.files?.find(f => f.path.endsWith('.css'));
+        const jsFile = app.code.files?.find(f => f.path.endsWith('.js'));
+
+        zip.file('index.html', `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${app.name}</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+${htmlFile?.content || app.code.html}
+  <script src="app.js"></script>
+</body>
+</html>`);
+
+        if (cssFile) zip.file('styles.css', cssFile.content);
+        else if (app.code.css) zip.file('styles.css', app.code.css);
+
+        if (jsFile) zip.file('app.js', jsFile.content);
+        else if (app.code.js) zip.file('app.js', app.code.js);
+
+        // Add docs
+        const docFiles = (app.code.files || []).filter(f =>
+          !f.path.endsWith('.html') && !f.path.endsWith('.css') && !f.path.endsWith('.js')
+        );
+        for (const doc of docFiles) zip.file(doc.path, doc.content);
+
+        const blob = await zip.generateAsync({ type: 'blob' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${app.name.replace(/\s+/g, '_')}.html`;
+        a.download = `${safeName}.zip`;
         a.click();
         URL.revokeObjectURL(url);
+
         updateDeploy(deployId, {
           status: 'success',
-          message: 'HTML 文件已下载',
+          message: `ZIP 已下载（${Object.keys(zip.files).length} 个文件）`,
           url: '本地文件',
         });
         setDeployResult({
@@ -121,7 +156,7 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : `  <script>\n${app.cod
           message: '部署包已下载到本地',
           url: '本地文件',
         });
-        showToast('部署包已下载', 'success');
+        showToast(`ZIP 已下载（${Object.keys(zip.files).length} 个文件）`, 'success');
       } catch {
         updateDeploy(deployId, { status: 'failed', message: '下载失败' });
         setDeployResult({ ...deploy, status: 'failed', message: '下载失败' });
@@ -139,16 +174,29 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : `  <script>\n${app.cod
     }
   };
 
-  const handleDownloadPackage = () => {
-    const html = buildFullHTML();
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${app.name.replace(/\s+/g, '_')}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('部署包已下载', 'success');
+  const handleDownloadPackage = async () => {
+    try {
+      const zip = new JSZip();
+      const safeName = app.name.replace(/[\s/\\]+/g, '_');
+      zip.file('index.html', buildFullHTML());
+
+      // Add all extra files (docs)
+      const extraFiles = (app.code.files || []).filter(f =>
+        !f.path.endsWith('.html') && !f.path.endsWith('.css') && !f.path.endsWith('.js')
+      );
+      for (const doc of extraFiles) zip.file(doc.path, doc.content);
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`ZIP 已下载（${Object.keys(zip.files).length} 个文件）`, 'success');
+    } catch {
+      showToast('下载失败', 'error');
+    }
   };
 
   return (
@@ -293,8 +341,8 @@ ${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : `  <script>\n${app.cod
                   onClick={handleDownloadPackage}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-atoms-card border border-atoms-border hover:border-atoms-accent text-atoms-text rounded-lg text-sm font-medium transition-colors"
                 >
-                  <Download size={16} />
-                  下载部署包
+                  <FileArchive size={16} />
+                  下载 ZIP 包
                 </button>
                 {deployResult.url && deployResult.url !== '本地文件' && (
                   <a

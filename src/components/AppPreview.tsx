@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { GeneratedApp, AppFile } from '@/types';
-import { X, Code, Eye, Download, MessageSquare, Bot, Pencil, Save, FolderTree, Rocket } from 'lucide-react';
+import { X, Code, Eye, Download, MessageSquare, Bot, Pencil, Save, FolderTree, Rocket, FileArchive } from 'lucide-react';
+import JSZip from 'jszip';
 import { useToast } from '@/components/Toast';
 import CodeEditor from './CodeEditor';
 import DeployModal from './DeployModal';
@@ -92,35 +93,68 @@ export default function AppPreview({ app, onClose, onEdit }: AppPreviewProps) {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!app) return;
     try {
-      const htmlFile = files.find(f => f.path === 'index.html') || files[0];
+      const zip = new JSZip();
+      const safeName = app.name.replace(/[\s/\\]+/g, '_');
+
+      // Build standalone index.html with external references
       const cssFile = files.find(f => f.path.endsWith('.css'));
       const jsFile = files.find(f => f.path.endsWith('.js'));
+      const htmlFile = files.find(f => f.path === 'index.html') || files[0];
 
-      const fullCode = `<!DOCTYPE html>
+      const indexHtml = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${app.name}</title>
-  ${cssFile ? `<style>\n${cssFile.content}\n  </style>` : ''}
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 ${htmlFile?.content || ''}
-${jsFile ? `  <script>\n${jsFile.content}\n  </script>` : ''}
+  <script src="app.js"></script>
 </body>
 </html>`;
 
-      const blob = new Blob([fullCode], { type: 'text/html' });
+      zip.file('index.html', indexHtml);
+
+      // Add CSS
+      if (cssFile) {
+        zip.file('styles.css', cssFile.content);
+      } else if (app.code.css) {
+        zip.file('styles.css', app.code.css);
+      }
+
+      // Add JavaScript
+      if (jsFile) {
+        zip.file('app.js', jsFile.content);
+      } else if (app.code.js) {
+        zip.file('app.js', app.code.js);
+      }
+
+      // Add all other files (docs, etc.)
+      const docFiles = files.filter(f =>
+        !f.path.endsWith('.html') &&
+        !f.path.endsWith('.css') &&
+        !f.path.endsWith('.js')
+      );
+      for (const docFile of docFiles) {
+        zip.file(docFile.path, docFile.content);
+      }
+
+      // Generate ZIP and download
+      const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${app.name.replace(/\s+/g, '_')}.html`;
+      a.download = `${safeName}.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast('代码下载成功', 'success');
+
+      const fileCount = Object.keys(zip.files).length;
+      showToast(`已下载 ${fileCount} 个文件（含分析文档）`, 'success');
     } catch {
       showToast('下载失败，请重试', 'error');
     }
@@ -237,10 +271,10 @@ ${app.code.js}
           <button
             onClick={handleDownload}
             className="p-2 rounded-lg bg-atoms-card border border-atoms-border text-atoms-textMuted hover:text-atoms-text hover:border-atoms-accent transition-colors focus:outline-none focus:ring-2 focus:ring-atoms-accent"
-            title="下载 HTML 文件"
-            aria-label="下载 HTML 文件"
+            title="下载 ZIP（含代码和文档）"
+            aria-label="下载 ZIP 文件"
           >
-            <Download size={16} aria-hidden="true" />
+            <FileArchive size={16} aria-hidden="true" />
           </button>
           <button
             onClick={() => setShowDeployModal(true)}
